@@ -1,5 +1,14 @@
 const root = document.getElementById("app");
 
+const CATEGORY_ACCENT_VAR = {
+  "TCC": "--accent-tcc",
+  "Psicanálise": "--accent-psi",
+};
+
+function categoryAccent(categoria) {
+  return `var(${CATEGORY_ACCENT_VAR[categoria] || "--accent-tcc"})`;
+}
+
 function getExercise(id) {
   return EXERCISES.find((e) => e.id === id);
 }
@@ -19,18 +28,11 @@ function el(tag, attrs = {}, children = []) {
 }
 
 async function router() {
-  if (!authReady) return;
-
-  if (!getUser()) {
-    renderAuth();
-    return;
-  }
-
   const hash = location.hash.slice(1) || "/";
   const parts = hash.split("/").filter(Boolean);
 
-  if (parts.length === 0) {
-    await renderHome();
+  if (parts[0] === "conta") {
+    renderAccount();
   } else if (parts[0] === "exercicio" && parts[1] && !parts[2]) {
     await renderExercise(parts[1]);
   } else if (parts[0] === "exercicio" && parts[1] && parts[2] === "novo") {
@@ -40,7 +42,41 @@ async function router() {
   }
 }
 
-function renderAuth() {
+function renderTopBar() {
+  const user = getUser();
+
+  if (user) {
+    return el("div", { class: "topbar" }, [
+      el("span", { class: "user-email" }, user.email),
+      el("button", { class: "btn secondary", onclick: async () => { await signOut(); } }, "Sair"),
+    ]);
+  }
+
+  return el("div", { class: "topbar" }, [
+    el("a", { class: "btn secondary", href: "#/conta" }, "Criar conta / Entrar"),
+  ]);
+}
+
+function renderAccount() {
+  const user = getUser();
+
+  if (user) {
+    root.replaceChildren(
+      renderTopBar(),
+      el("header", {}, [
+        el("a", { class: "back", href: "#/" }, "← Voltar"),
+        el("p", { class: "eyebrow" }, "Ficha do usuário"),
+        el("h1", {}, "Sua conta"),
+        el(
+          "p",
+          { class: "subtitle" },
+          `Conectado como ${user.email}. Seus novos registros são salvos na nuvem e sincronizados entre dispositivos.`
+        ),
+      ])
+    );
+    return;
+  }
+
   let mode = "login";
   const emailInput = el("input", { type: "email", required: "true", placeholder: "voce@exemplo.com" });
   const passwordInput = el("input", { type: "password", required: "true", minlength: "6", placeholder: "••••••••" });
@@ -72,6 +108,7 @@ function renderAuth() {
         try {
           if (mode === "login") {
             await signIn(emailInput.value.trim(), passwordInput.value);
+            location.hash = "#/";
           } else {
             await signUp(emailInput.value.trim(), passwordInput.value);
             errorBox.classList.add("info");
@@ -94,19 +131,19 @@ function renderAuth() {
   );
 
   root.replaceChildren(
+    renderTopBar(),
     el("header", {}, [
-      el("h1", {}, "Exercícios para a Mente"),
-      el("p", { class: "subtitle" }, "Entre ou crie sua conta para registrar seus exercícios."),
+      el("a", { class: "back", href: "#/" }, "← Voltar"),
+      el("p", { class: "eyebrow" }, "Registro opcional"),
+      el("h1", {}, "Criar conta ou entrar"),
+      el(
+        "p",
+        { class: "subtitle" },
+        "Opcional: crie uma conta para sincronizar seus registros entre dispositivos. Sem conta, eles ficam salvos apenas neste navegador."
+      ),
     ]),
     form
   );
-}
-
-function renderLogoutBar() {
-  return el("div", { class: "topbar" }, [
-    el("span", { class: "user-email" }, getUser().email),
-    el("button", { class: "btn secondary", onclick: async () => { await signOut(); } }, "Sair"),
-  ]);
 }
 
 async function renderHome() {
@@ -117,19 +154,31 @@ async function renderHome() {
   }
 
   const sections = categorias.map((categoria) => {
-    const cards = EXERCISES.filter((e) => e.categoria === categoria).map((exercise) =>
+    const exercisesInCategory = EXERCISES.filter((e) => e.categoria === categoria);
+    const cards = exercisesInCategory.map((exercise) =>
       el("a", { class: "card", href: `#/exercicio/${exercise.id}` }, [
         el("h3", {}, exercise.nome),
         el("p", {}, exercise.descricao),
         el("span", { class: "count" }, `${counts[exercise.id]} registro(s)`),
       ])
     );
-    return el("section", {}, [el("h2", {}, categoria), el("div", { class: "grid" }, cards)]);
+    return el(
+      "section",
+      { class: "category", style: `--cat-accent: ${categoryAccent(categoria)}` },
+      [
+        el("div", { class: "tab" }, [
+          el("h2", {}, categoria),
+          el("span", { class: "tab-count" }, `${exercisesInCategory.length} exercício(s)`),
+        ]),
+        el("div", { class: "grid" }, cards),
+      ]
+    );
   });
 
   root.replaceChildren(
-    renderLogoutBar(),
+    renderTopBar(),
     el("header", {}, [
+      el("p", { class: "eyebrow" }, "Caderno de prática"),
       el("h1", {}, "Exercícios para a Mente"),
       el("p", { class: "subtitle" }, "Registre seus exercícios de autoconhecimento e acompanhe sua evolução."),
     ]),
@@ -148,14 +197,21 @@ async function renderExercise(exerciseId) {
     : [el("p", { class: "empty" }, "Nenhum registro ainda. Comece agora.")];
 
   root.replaceChildren(
-    renderLogoutBar(),
-    el("header", {}, [
-      el("a", { class: "back", href: "#/" }, "← Voltar"),
-      el("h1", {}, exercise.nome),
-      el("p", { class: "subtitle" }, exercise.descricao),
-      el("a", { class: "btn", href: `#/exercicio/${exercise.id}/novo` }, "+ Novo registro"),
-    ]),
-    el("section", { class: "history" }, list)
+    renderTopBar(),
+    el(
+      "div",
+      { class: "exercise-view", style: `--cat-accent: ${categoryAccent(exercise.categoria)}` },
+      [
+        el("header", {}, [
+          el("a", { class: "back", href: "#/" }, "← Voltar"),
+          el("p", { class: "eyebrow" }, exercise.categoria),
+          el("h1", {}, exercise.nome),
+          el("p", { class: "subtitle" }, exercise.descricao),
+          el("a", { class: "btn", href: `#/exercicio/${exercise.id}/novo` }, "+ Novo registro"),
+        ]),
+        el("section", { class: "history" }, list),
+      ]
+    )
   );
 }
 
@@ -236,14 +292,24 @@ function renderForm(exerciseId) {
   );
 
   root.replaceChildren(
-    renderLogoutBar(),
-    el("header", {}, [
-      el("a", { class: "back", href: `#/exercicio/${exercise.id}` }, "← Voltar"),
-      el("h1", {}, `Novo registro: ${exercise.nome}`),
-    ]),
-    form
+    renderTopBar(),
+    el(
+      "div",
+      { class: "exercise-view", style: `--cat-accent: ${categoryAccent(exercise.categoria)}` },
+      [
+        el("header", {}, [
+          el("a", { class: "back", href: `#/exercicio/${exercise.id}` }, "← Voltar"),
+          el("p", { class: "eyebrow" }, exercise.categoria),
+          el("h1", {}, `Novo registro: ${exercise.nome}`),
+        ]),
+        form,
+      ]
+    )
   );
 }
 
 window.addEventListener("hashchange", router);
-window.addEventListener("DOMContentLoaded", () => initAuth(router));
+window.addEventListener("DOMContentLoaded", () => {
+  router();
+  initAuth(router);
+});
